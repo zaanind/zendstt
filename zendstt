@@ -9,7 +9,6 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.utils import to_categorical
 
 
-N_MFCC = "40"
 
 audio_files_path = "audtrain.txt"
 texttranscribe_path = "text.txt"
