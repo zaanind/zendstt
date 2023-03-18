@@ -1,0 +1,113 @@
+import json
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+import tensorflow as tf
+import librosa
+import numpy as np
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.utils import to_categorical
+
+
+
+audio_files_path = "data/audtrain.txt"
+texttranscribe_path = "data/text.txt"
+
+# Load the audio file paths and corresponding text labels
+with open(audio_files_path, 'r') as f:
+    audio_files = f.read().splitlines()
+with open(texttranscribe_path, 'r') as f:
+    audio_labels_text = f.read().splitlines()
+
+
+
+
+
+# Tokenize the labels and convert to binary matrix
+tokenizer = Tokenizer(oov_token='<UNK>')
+tokenizer.fit_on_texts(audio_labels_text)
+
+audio_labels = tokenizer.texts_to_matrix(audio_labels_text, mode='binary')
+
+word_index = tokenizer.word_index
+num_labels = len(tokenizer.word_index) + 1
+
+print(word_index)
+
+print(audio_labels)
+
+
+
+
+
+# Define function to preprocess audio
+def preprocess_audio(audio_path, sr=16000, n_mfcc=40):
+    # Load the audio file
+    signal, sr = librosa.load(audio_path, sr=sr)
+    # Extract MFCC features
+    mfccs = librosa.feature.mfcc(y=signal, sr=sr, n_mfcc=n_mfcc)
+    # Transpose the matrix to have MFCCs as columns
+    mfccs = mfccs.T
+    return mfccs
+
+# Preprocess the audio files and their corresponding labels
+x_train = []
+y_train = []
+for audio_file, audio_label in zip(audio_files, audio_labels):
+    mfccs = preprocess_audio(audio_file)
+    x_train.append(mfccs)
+    y_train.append(audio_label)
+    
+
+
+x_train = tf.ragged.constant(x_train)
+y_train = tf.constant(y_train)
+
+
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(None, 40)),
+    tf.keras.layers.LSTM(128, return_sequences=True),
+    tf.keras.layers.LSTM(128),
+    tf.keras.layers.Dense(num_labels, activation='softmax')
+])
+
+
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+
+
+
+# Train the model
+model.fit(x_train, y_train, epochs=20)
+
+
+model_path = 'model.h5'
+model.save(model_path)
+
+
+# Save word index as a json file
+with open('word_index.json', 'w') as f:
+    json.dump(word_index, f)
+
+
+# Use the model to predict the label of a new audio clip
+new_audio_file = 'data/no.wav'
+new_mfccs = preprocess_audio(new_audio_file)
+
+new_mfccs = tf.ragged.constant([new_mfccs])
+
+prediction = model.predict(new_mfccs)
+
+predicted_label = tf.argmax(prediction, axis=1).numpy()[0]
+
+
+predicted_label_text = tokenizer.sequences_to_texts([[predicted_label]])[0]
+
+print('The predicted text of the test audio clip is', predicted_label_text)
+
+
+print(prediction)
+
+
